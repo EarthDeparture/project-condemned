@@ -27,15 +27,15 @@ jobs:
               deps = json.load(f).get('dependencies', {})
 
           required = {
-              'com.unity.netcode.gameobjects':       'Networking',
+              'com.unity.netcode.gameobjects':       'Networking (NGO)',
               'com.unity.render-pipelines.universal':'URP',
-              'com.unity.services.relay':            'Relay (P2P)',
-              'com.unity.services.lobby':            'Lobby',
               'com.unity.services.authentication':   'UGS Auth',
               'com.unity.inputsystem':               'Input System',
               'com.unity.cinemachine':               'Cinemachine',
               'com.unity.ai.navigation':             'AI Navigation',
               'com.unity.probuilder':                'ProBuilder',
+              # Note: com.unity.services.lobby and relay are deprecated in Unity 6.
+              # Replacement (com.unity.services.multiplayer) added at M4.
           }
 
           failed = False

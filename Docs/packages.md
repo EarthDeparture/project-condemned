@@ -24,9 +24,10 @@ Install all via **Window → Package Manager** in Unity.
 
 | Package | Version | Source | Notes |
 |---|---|---|---|
-| Authentication | 3.x | Unity Registry | Required by Lobby + Relay. |
-| Lobby | 1.x | Unity Registry | Lobby creation and joining. |
-| Relay | 1.x | Unity Registry | P2P NAT traversal (no dedicated server). |
+| Authentication | 3.x | Unity Registry | Required by multiplayer services. Currently installed. |
+| **Multiplayer Services** | TBD at M4 | Unity Registry | `com.unity.services.multiplayer` — unified replacement for deprecated Lobby (1.x) and Relay (1.x) packages. Add when starting M4. |
+
+> ⚠️ `com.unity.services.lobby` and `com.unity.services.relay` are **deprecated** in Unity 6. Do not add them. Use `com.unity.services.multiplayer` at M4 instead.
 
 ## Navigation
 
