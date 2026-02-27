@@ -1,22 +1,81 @@
 name: Unity Build CI
 
-# Full Unity build — requires UNITY_LICENSE, UNITY_EMAIL, UNITY_PASSWORD secrets.
-# See Docs/CI_SETUP.md for activation instructions.
+# ─────────────────────────────────────────────────────────────────────────────
+# Full Unity build using GameCI. Produces a Windows 64-bit standalone binary.
+#
+# WHEN IT RUNS:
+#   • Every push to main / develop   ← triggers the workflow
+#   • Every pull request to main
+#   • Manual dispatch (Actions → Run workflow)
+#   • Any tag matching v* (release builds)
+#
+# WHEN THE BUILD JOB IS SKIPPED (not failed):
+#   The build job requires UNITY_LICENSE to be set as a GitHub repository
+#   secret. If the secret is absent or empty, the job is skipped with a
+#   neutral result — the overall workflow still turns green.
+#
+#   This design means you can push freely during development without the
+#   build job turning red just because secrets haven't been configured yet.
+#
+# SETTING UP SECRETS (one-time):
+#   See Docs/CI_SETUP.md for the full activation walkthrough.
+#   Required secrets: UNITY_LICENSE, UNITY_EMAIL, UNITY_PASSWORD
+#
+# LIBRARY CACHE:
+#   The Unity Library folder is cached between runs keyed on Unity version +
+#   content hash. First run after a cache miss will be slow (~15–30 min).
+#   Subsequent runs are fast (~3–5 min).
+# ─────────────────────────────────────────────────────────────────────────────
 
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Target platform"
+        required: false
+        default: "StandaloneWindows64"
+        type: choice
+        options:
+          - StandaloneWindows64
+          - StandaloneLinux64
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ── Secrets availability check ─────────────────────────────────────────────
+  check-secrets:
+    name: Check build prerequisites
+    runs-on: ubuntu-latest
+    outputs:
+      secrets-available: ${{ steps.check.outputs.available }}
+
+    steps:
+      - name: Detect UNITY_LICENSE secret
+        id: check
+        run: |
+          if [ -n "${{ secrets.UNITY_LICENSE }}" ]; then
+            echo "available=true"  >> $GITHUB_OUTPUT
+            echo "✓ UNITY_LICENSE secret is set — build will proceed."
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "⚠ UNITY_LICENSE secret is not set."
+            echo "  The build job will be skipped (not failed)."
+            echo "  See Docs/CI_SETUP.md to activate your Unity license."
+          fi
+
+  # ── Full Unity build ───────────────────────────────────────────────────────
   build:
     name: Build — ${{ matrix.targetPlatform }}
     runs-on: ubuntu-latest
+    needs: check-secrets
+    if: ${{ needs.check-secrets.outputs.secrets-available == 'true' }}
 
     strategy:
       fail-fast: false
@@ -47,11 +106,11 @@ jobs:
           UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          unityVersion:   6000.3.10f1
-          targetPlatform: ${{ matrix.targetPlatform }}
-          buildName:      ProjectCondemned
-          buildsPath:     Builds
-          versioning:     Semantic
+          unityVersion:           6000.3.10f1
+          targetPlatform:         ${{ matrix.targetPlatform }}
+          buildName:              ProjectCondemned
+          buildsPath:             Builds
+          versioning:             Semantic
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -59,4 +118,4 @@ jobs:
         with:
           name: ProjectCondemned-${{ matrix.targetPlatform }}-${{ github.sha }}
           path: Builds/${{ matrix.targetPlatform }}
-          retention-days: 7
+          retention-days: 14

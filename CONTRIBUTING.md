@@ -190,3 +190,38 @@ public class PerkDefinition : ScriptableObject
 **Never delete .meta files.** They contain Unity's GUID registry — losing them breaks all scene and prefab references.
 
 If a .meta file appears in a PR diff and no corresponding asset was changed, investigate before merging.
+
+#### Adding new scripts outside the Unity Editor
+
+When creating `.cs` files via CLI or a code editor (not through the Unity Editor UI), Unity will **not** auto-generate the `.meta` file. You must generate it manually before committing, or the `Compile Check` CI step will fail.
+
+Use this helper script to generate a `.meta` file for any new script:
+
+```bash
+python3 -c "
+import uuid, sys
+
+path = sys.argv[1]   # e.g. Assets/Scripts/Gameplay/MySystem.cs
+guid = uuid.uuid4().hex
+
+content = f'''fileFormatVersion: 2
+guid: {guid}
+MonoImporter:
+  externalObjects: {{}}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {{instanceID: 0}}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+'''
+
+with open(path + '.meta', 'w') as f:
+    f.write(content)
+
+print(f'Generated {path}.meta  (guid: {guid})')
+" Assets/Scripts/Gameplay/MyNewSystem.cs
+```
+
+Commit the `.meta` file in the **same commit** as the `.cs` file. The CI enforces this pairing.

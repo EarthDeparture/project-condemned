@@ -1,13 +1,25 @@
 name: Compile Check
 
-# Lightweight validation that runs on every push — no Unity license required.
-# Catches missing packages, empty scripts, and manifest errors instantly.
+# ─────────────────────────────────────────────────────────────────────────────
+# Lightweight structural validation — runs on every push.
+# No Unity license required. Catches the most common mistakes before a human
+# ever has to open the project:
+#   1. Required packages present in manifest.json
+#   2. No empty .cs script files
+#   3. Every .cs script has a corresponding .meta file (Unity tracking)
+#   4. All five required scenes exist
+#   5. ARCHITECTURE.md is present
+#
+# .meta files must always be committed alongside new scripts.
+# Generate them manually (see CONTRIBUTING.md) or let the Unity Editor create
+# them on first open — but always commit before pushing.
+# ─────────────────────────────────────────────────────────────────────────────
 
 on:
   push:
-    branches: [main, develop]
+    branches: ["**"]
   pull_request:
-    branches: [main, develop]
+    branches: ["**"]
 
 jobs:
   validate:
@@ -18,76 +30,96 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate manifest.json (required packages present)
+      # ── Step 1: Required packages ─────────────────────────────────────────
+      - name: Validate manifest.json
         run: |
-          python3 -c "
+          python3 - <<'EOF'
           import json, sys
 
           with open('Packages/manifest.json') as f:
               deps = json.load(f).get('dependencies', {})
 
           required = {
-              'com.unity.netcode.gameobjects':       'Networking (NGO)',
-              'com.unity.render-pipelines.universal':'URP',
-              'com.unity.services.authentication':   'UGS Auth',
-              'com.unity.inputsystem':               'Input System',
-              'com.unity.cinemachine':               'Cinemachine',
-              'com.unity.ai.navigation':             'AI Navigation',
-              'com.unity.probuilder':                'ProBuilder',
-              # Note: com.unity.services.lobby and relay are deprecated in Unity 6.
-              # Replacement (com.unity.services.multiplayer) added at M4.
+              'com.unity.netcode.gameobjects':        'Netcode for GameObjects (NGO)',
+              'com.unity.render-pipelines.universal': 'Universal Render Pipeline (URP)',
+              'com.unity.services.authentication':    'UGS Authentication',
+              'com.unity.inputsystem':                'Input System',
+              'com.unity.cinemachine':                'Cinemachine',
+              'com.unity.ai.navigation':              'AI Navigation',
+              'com.unity.probuilder':                 'ProBuilder',
           }
 
           failed = False
           for pkg, label in required.items():
               if pkg in deps:
-                  print(f'  OK  {label} ({deps[pkg]})')
+                  print(f'  ✓  {label}  ({deps[pkg]})')
               else:
-                  print(f'  FAIL  {label} — {pkg} missing from manifest.json')
+                  print(f'  ✗  {label}  — {pkg} missing from manifest.json')
                   failed = True
 
-          sys.exit(1 if failed else 0)
-          "
+          if failed:
+              sys.exit(1)
+          else:
+              print(f'\n  All {len(required)} required packages present.')
+          EOF
 
-      - name: Check all .cs scripts are non-empty
+      # ── Step 2: No empty scripts ──────────────────────────────────────────
+      - name: Check scripts are non-empty
         run: |
           EMPTY=$(find Assets/Scripts -name "*.cs" -empty 2>/dev/null)
           if [ -n "$EMPTY" ]; then
-            echo "FAIL: Empty script files found:"
+            echo "✗ Empty script files found:"
             echo "$EMPTY"
             exit 1
           fi
-          COUNT=$(find Assets/Scripts -name "*.cs" | wc -l)
-          echo "OK: $COUNT script files found, none empty."
+          COUNT=$(find Assets/Scripts -name "*.cs" | wc -l | tr -d ' ')
+          echo "✓ $COUNT script(s) — none empty."
 
-      - name: Check .meta files exist for all scripts
+      # ── Step 3: .meta file coverage ───────────────────────────────────────
+      - name: Check .meta files for all scripts
         run: |
           MISSING=""
-          for cs in $(find Assets/Scripts -name "*.cs"); do
+          for cs in $(find Assets/Scripts -name "*.cs" | sort); do
             if [ ! -f "${cs}.meta" ]; then
-              MISSING="$MISSING\n  MISSING: ${cs}.meta"
+              MISSING="$MISSING\n  ✗  ${cs}.meta"
             fi
           done
+
           if [ -n "$MISSING" ]; then
-            echo -e "FAIL: Missing .meta files:$MISSING"
+            echo -e "Missing .meta files (commit these alongside their scripts):$MISSING"
+            echo ""
+            echo "Unity cannot track assets without .meta files."
+            echo "See CONTRIBUTING.md — 'Adding new scripts' section."
             exit 1
           fi
-          echo "OK: All script .meta files present."
 
-      - name: Verify required scenes exist
+          COUNT=$(find Assets/Scripts -name "*.cs.meta" | wc -l | tr -d ' ')
+          echo "✓ $COUNT .meta file(s) — all present."
+
+      # ── Step 4: Required scenes ───────────────────────────────────────────
+      - name: Check required scenes exist
         run: |
-          scenes=("Bootstrap" "MainMenu" "Lobby" "Game" "EndScreen")
           FAIL=0
-          for scene in "${scenes[@]}"; do
+          for scene in Bootstrap MainMenu Lobby Game EndScreen; do
             if [ -f "Assets/Scenes/${scene}.unity" ]; then
-              echo "  OK  ${scene}.unity"
+              echo "  ✓  ${scene}.unity"
             else
-              echo "  FAIL  Assets/Scenes/${scene}.unity not found"
+              echo "  ✗  Assets/Scenes/${scene}.unity — not found"
               FAIL=1
             fi
           done
-          exit $FAIL
+          [ $FAIL -eq 0 ] && echo "All scenes present." || exit 1
 
-      - name: Validate ARCHITECTURE.md exists
+      # ── Step 5: Docs ──────────────────────────────────────────────────────
+      - name: Check required documentation
         run: |
-          [ -f "ARCHITECTURE.md" ] && echo "OK: ARCHITECTURE.md present." || (echo "FAIL: ARCHITECTURE.md missing." && exit 1)
+          FAIL=0
+          for doc in ARCHITECTURE.md CONTRIBUTING.md; do
+            if [ -f "$doc" ]; then
+              echo "  ✓  $doc"
+            else
+              echo "  ✗  $doc — not found"
+              FAIL=1
+            fi
+          done
+          [ $FAIL -eq 0 ] || exit 1
