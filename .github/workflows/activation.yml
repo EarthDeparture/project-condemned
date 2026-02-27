@@ -1,0 +1,26 @@
+name: Unity License Activation
+
+# Run this workflow ONCE manually to generate your Unity license file.
+# Follow the steps in Docs/CI_SETUP.md after running it.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  activation:
+    name: Generate activation file
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Request Unity manual activation file
+        id: getManualLicenseFile
+        uses: game-ci/unity-request-activation-file@v2
+        with:
+          unityVersion: 6000.3.10f1
+
+      - name: Upload activation file as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity_v${{ steps.getManualLicenseFile.outputs.unityVersion }}.alf
+          path: ${{ steps.getManualLicenseFile.outputs.filePath }}
+          retention-days: 1
