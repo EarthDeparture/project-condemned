@@ -1,0 +1,91 @@
+# ─── Unity Generated ──────────────────────────────────────────────────────────
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Never ignore Asset meta data as they may be binary files
+!/[Aa]ssets/**/*.meta
+
+# Uncomment this line if you wish to ignore the asset store tools plugin
+# /[Aa]ssets/AssetStoreTools*
+
+# ─── Unity Cache & Local Config ───────────────────────────────────────────────
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics generated file
+Assets/StreamingAssets/aa.meta
+Assets/StreamingAssets/aa/
+
+# ─── Visual Studio ────────────────────────────────────────────────────────────
+.vs/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+ExportedObj/
+
+# ─── JetBrains Rider ──────────────────────────────────────────────────────────
+.idea/
+*.sln.DotSettings.user
+
+# ─── VS Code ──────────────────────────────────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ─── Windows ──────────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ─── Linux ────────────────────────────────────────────────────────────────────
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ─── Build Artifacts ──────────────────────────────────────────────────────────
+/Builds/
+*.apk
+*.ipa
+*.exe
+*.app
+*.x86_64
+
+# ─── Packages ─────────────────────────────────────────────────────────────────
+# Uncomment if using git submodules for packages
+# /[Pp]ackages/
+
+# ─── Never Ignore ─────────────────────────────────────────────────────────────
+# All .meta files must be committed — they are Unity's GUID registry.
+# Losing or mismatching .meta files = broken asset references.
+# DO NOT add *.meta to this file.
