@@ -36,6 +36,7 @@ namespace Condemned.Systems
         /// <summary>Register a hook that exists in the scene.</summary>
         public void RegisterHook(HookPoint hook)
         {
+            if (hook == null) return;
             if (!_hooks.Contains(hook))
             {
                 hook.HookIndex = _hooks.Count;
@@ -137,6 +138,9 @@ namespace Condemned.Systems
 #if UNITY_EDITOR
         private void OnDrawGizmos()
         {
+            // Guard against dictionary being uninitialized during scene loading
+            if (_carried == null) return;
+
             // Visualise carry chains
             foreach (var (killerId, survivor) in _carried)
             {

@@ -114,8 +114,17 @@ namespace Condemned.Gameplay
             _targetCCHeight = _standHeight;
 
             // Auto-discover camera if not assigned — eliminates wiring-order dependency
-            if (_cameraTransform == null && Camera.main != null)
-                _cameraTransform = Camera.main.transform;
+            // Note: Camera.main may be null during scene load; will resolve in Update if needed
+            try
+            {
+                if (_cameraTransform == null && Camera.main != null)
+                    _cameraTransform = Camera.main.transform;
+            }
+            catch (System.Exception)
+            {
+                // Camera.main can throw during scene destruction or in certain editor states
+                // We'll retry in Update if needed
+            }
 
             BindInputActions();
 
@@ -187,6 +196,20 @@ namespace Condemned.Gameplay
 
         private void HandleMovement()
         {
+            // Retry camera discovery if still null (handles scene load timing issues)
+            if (_cameraTransform == null)
+            {
+                try
+                {
+                    if (Camera.main != null)
+                        _cameraTransform = Camera.main.transform;
+                }
+                catch (System.Exception)
+                {
+                    // Camera.main can throw during scene destruction
+                }
+            }
+
             Vector2 input = _moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
             Vector3 moveDir = ResolveMovementDirection(input);
 

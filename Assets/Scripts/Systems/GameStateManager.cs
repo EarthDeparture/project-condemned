@@ -5,9 +5,7 @@
 //              for match progression. All systems read state from here;
 //              all state changes go through here.
 //
-// Bug fix (M2): OnGenRepaired now increments its own counter rather than
-//               trusting e.TotalCompleted (which GeneratorInteraction sets
-//               to -1 as a sentinel — match manager owns the count).
+// Bug fix (M2): OnGenRepaired increments own counter (e.TotalCompleted = -1 sentinel).
 // ============================================================================
 
 using UnityEngine;

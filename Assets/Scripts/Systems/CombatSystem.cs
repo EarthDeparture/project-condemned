@@ -188,6 +188,9 @@ namespace Condemned.Systems
 #if UNITY_EDITOR
         private void OnDrawGizmos()
         {
+            // Guard against dictionary being uninitialized during scene loading
+            if (_killers == null) return;
+
             foreach (var killer in _killers.Values)
             {
                 if (killer == null) continue;
