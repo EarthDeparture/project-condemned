@@ -153,6 +153,7 @@ namespace Condemned.Runtime
             }
 
             LineOfSightDetector.Instance?.SetKiller(_killer);
+            CombatSystem.Instance?.RegisterKiller(_killer);
         }
 
         private void WireHooks()

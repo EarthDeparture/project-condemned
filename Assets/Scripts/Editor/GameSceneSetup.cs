@@ -114,6 +114,7 @@ namespace Condemned.Editor
             EnsureComponent<LineOfSightDetector>(managersGO);
             EnsureComponent<HookSystem>(managersGO);
             EnsureComponent<SurvivorHealthSystem>(managersGO);
+            EnsureComponent<CombatSystem>(managersGO);
             EnsureComponent<GameSceneBootstrapper>(managersGO);
             EnsureComponent<DebugHUD>(managersGO);
 
