@@ -2,21 +2,31 @@
 // SurvivorController.cs
 // Namespace: Condemned.Gameplay
 // Description: Survivor character controller. Handles movement, sprint, crouch,
-//              interaction raycasting, and footstep sound events.
-//              Uses CharacterController (not Rigidbody) for precise control.
+//              interaction raycasting, skill check submission, and footstep
+//              sound events.
+//
+// Dead by Daylight control scheme (PC):
+//   WASD          — Move
+//   Left Shift    — Sprint (hold)
+//   Left Ctrl     — Crouch (toggle)
+//   Space         — Primary Interact (hold near generator/gate/etc.)
+//                   Also submits Skill Check when one is active
+//   Space (hold)  — Held interactions (healing, repairing) handled via
+//                   _isHoldingInteract flag polled by IHoldInteractable
 //
 // Scene Setup:
 //   1. Add to the Survivor prefab root GameObject
 //   2. Ensure a CharacterController component is also on the root
 //   3. Assign _inputActions (CondemendInputActions asset in Assets/Settings/)
 //   4. Assign _cameraTransform (Main Camera transform)
-//   5. Assign _interactionOrigin (an empty child transform at eye level)
+//   5. Assign _interactionOrigin (empty child transform at eye level)
 // ============================================================================
 
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Condemned.Core;
+using Condemned.Systems;
 
 namespace Condemned.Gameplay
 {
@@ -36,38 +46,30 @@ namespace Condemned.Gameplay
         [SerializeField] private float _crouchSpeed = 2.2f;
 
         [Header("Movement Feel")]
-        [Tooltip("How quickly the character reaches target speed.")]
         [SerializeField, Range(4f, 30f)] private float _acceleration  = 14f;
-        [Tooltip("How quickly the character stops when no input is given.")]
         [SerializeField, Range(4f, 30f)] private float _deceleration  = 20f;
-        [Tooltip("Multiplier applied to movement speed when injured.")]
         [SerializeField, Range(0.4f, 1f)] private float _injuredSpeedMultiplier = 0.78f;
 
         [Header("Crouch")]
-        [SerializeField] private float _standHeight  = 1.8f;
-        [SerializeField] private float _crouchHeight = 1.0f;
+        [SerializeField] private float _standHeight         = 1.8f;
+        [SerializeField] private float _crouchHeight        = 1.0f;
         [SerializeField] private float _crouchTransitionSpeed = 8f;
 
         [Header("Gravity")]
-        [SerializeField] private float _gravity          = -18f;
-        [SerializeField] private float _groundedGravity  = -2f;
+        [SerializeField] private float _gravity         = -18f;
+        [SerializeField] private float _groundedGravity = -2f;
 
         [Header("Camera")]
-        [Tooltip("The Main Camera transform — used to resolve isometric move direction.")]
         [SerializeField] private Transform _cameraTransform;
 
         [Header("Interaction")]
-        [Tooltip("Empty child transform at eye level — origin of interaction raycasts.")]
         [SerializeField] private Transform _interactionOrigin;
         [SerializeField] private float     _interactionRange  = 2.5f;
         [SerializeField] private LayerMask _interactionLayers = ~0;
 
         [Header("Footsteps")]
-        [Tooltip("Distance travelled (m) between footstep events.")]
         [SerializeField] private float _footstepStride    = 2.0f;
-        [Tooltip("Sound event radius for survivor footsteps.")]
         [SerializeField] private float _footstepRadius    = 12f;
-        [Tooltip("Sound event intensity (0–1). Lower than killer footsteps.")]
         [SerializeField, Range(0f, 1f)] private float _footstepIntensity = 0.25f;
 
         // ─── Input Actions ────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ namespace Condemned.Gameplay
         private InputAction _crouchAction;
         private InputAction _interactAction;
 
-        // ─── Components & References ──────────────────────────────────────────
+        // ─── Components ───────────────────────────────────────────────────────
 
         private CharacterController _cc;
 
@@ -92,12 +94,17 @@ namespace Condemned.Gameplay
         private float   _distanceTravelled;
         private float   _targetCCHeight;
 
+        // Held interact state — IHoldInteractable objects poll this each frame
+        private bool    _isHoldingInteract;
+        private IInteractable _currentHeldInteractable;
+
         // ─── Properties ───────────────────────────────────────────────────────
 
-        public bool IsMoving    => _horizontalVelocity.magnitude > 0.1f;
-        public bool IsSprinting => _isSprinting && IsMoving;
-        public bool IsCrouching => _isCrouching;
-        public bool IsGrounded  => _isGrounded;
+        public bool IsMoving         => _horizontalVelocity.magnitude > 0.1f;
+        public bool IsSprinting      => _isSprinting && IsMoving;
+        public bool IsCrouching      => _isCrouching;
+        public bool IsGrounded       => _isGrounded;
+        public bool IsHoldingInteract => _isHoldingInteract;
 
         // ─── Lifecycle ────────────────────────────────────────────────────────
 
@@ -105,6 +112,10 @@ namespace Condemned.Gameplay
         {
             _cc = GetComponent<CharacterController>();
             _targetCCHeight = _standHeight;
+
+            // Auto-discover camera if not assigned — eliminates wiring-order dependency
+            if (_cameraTransform == null && Camera.main != null)
+                _cameraTransform = Camera.main.transform;
 
             BindInputActions();
 
@@ -148,7 +159,8 @@ namespace Condemned.Gameplay
         {
             if (_inputActions == null)
             {
-                Debug.LogError("[SurvivorController] InputActionAsset not assigned. Assign CondemendInputActions in the Inspector.");
+                Debug.LogError("[SurvivorController] InputActionAsset not assigned. " +
+                               "Run Condemned > Setup Game Scene, or assign it manually.");
                 return;
             }
 
@@ -156,32 +168,30 @@ namespace Condemned.Gameplay
 
             _moveAction     = map.FindAction("Move",     throwIfNotFound: true);
             _sprintAction   = map.FindAction("Sprint",   throwIfNotFound: true);
-            _interactAction = map.FindAction("Interact", throwIfNotFound: true);
 
-            _crouchAction = map.FindAction("Crouch", throwIfNotFound: true);
+            _crouchAction   = map.FindAction("Crouch",   throwIfNotFound: true);
             _crouchAction.performed += _ => ToggleCrouch();
 
-            _interactAction.performed += _ => TryInteract();
+            _interactAction = map.FindAction("Interact", throwIfNotFound: true);
+            // Space pressed: submit skill check OR start interaction
+            _interactAction.performed += _ => OnInteractPressed();
+            // Space released: end held interaction
+            _interactAction.canceled  += _ => OnInteractReleased();
         }
 
         // ─── Ground Check ─────────────────────────────────────────────────────
 
-        private void CheckGrounded()
-        {
-            _isGrounded = _cc.isGrounded;
-        }
+        private void CheckGrounded() => _isGrounded = _cc.isGrounded;
 
         // ─── Movement ─────────────────────────────────────────────────────────
 
         private void HandleMovement()
         {
             Vector2 input = _moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
-
-            // Resolve move direction relative to isometric camera
             Vector3 moveDir = ResolveMovementDirection(input);
 
-            // Determine target speed
-            _isSprinting = (_sprintAction?.IsPressed() ?? false) && !_isCrouching && !_isInjured;
+            _isSprinting = (_sprintAction?.IsPressed() ?? false)
+                           && !_isCrouching && !_isInjured;
 
             float targetSpeed = _isCrouching ? _crouchSpeed
                               : _isSprinting ? _sprintSpeed
@@ -189,43 +199,31 @@ namespace Condemned.Gameplay
 
             if (_isInjured) targetSpeed *= _injuredSpeedMultiplier;
 
-            // Smooth acceleration / deceleration
             float smoothRate = moveDir.magnitude > 0.01f ? _acceleration : _deceleration;
             Vector3 targetVelocity = moveDir * targetSpeed;
             _horizontalVelocity = Vector3.MoveTowards(
                 _horizontalVelocity, targetVelocity, smoothRate * Time.deltaTime);
 
-            // Rotate character to face movement direction
             if (_horizontalVelocity.magnitude > 0.1f)
             {
                 Quaternion targetRot = Quaternion.LookRotation(_horizontalVelocity, Vector3.up);
                 transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 16f * Time.deltaTime);
             }
 
-            // Vertical velocity (gravity)
             _verticalVelocity = _isGrounded
                 ? _groundedGravity
                 : _verticalVelocity + _gravity * Time.deltaTime;
 
-            // Move
-            Vector3 motion = _horizontalVelocity + Vector3.up * _verticalVelocity;
-            _cc.Move(motion * Time.deltaTime);
+            _cc.Move((_horizontalVelocity + Vector3.up * _verticalVelocity) * Time.deltaTime);
         }
 
-        /// <summary>
-        /// Project camera forward/right onto the horizontal plane and resolve
-        /// a world-space movement direction from 2D input.
-        /// </summary>
         private Vector3 ResolveMovementDirection(Vector2 input)
         {
             if (_cameraTransform == null || input.magnitude < 0.01f)
                 return Vector3.zero;
 
-            Vector3 camForward = _cameraTransform.forward;
-            Vector3 camRight   = _cameraTransform.right;
-
-            camForward.y = 0f; camForward.Normalize();
-            camRight.y   = 0f; camRight.Normalize();
+            Vector3 camForward = _cameraTransform.forward; camForward.y = 0f; camForward.Normalize();
+            Vector3 camRight   = _cameraTransform.right;   camRight.y   = 0f; camRight.Normalize();
 
             return (camForward * input.y + camRight * input.x).normalized;
         }
@@ -234,8 +232,7 @@ namespace Condemned.Gameplay
 
         private void ToggleCrouch()
         {
-            if (_isInjured) return; // Cannot crouch while injured — use crawl state
-
+            if (_isInjured) return;
             _isCrouching = !_isCrouching;
             _targetCCHeight = _isCrouching ? _crouchHeight : _standHeight;
         }
@@ -246,14 +243,55 @@ namespace Condemned.Gameplay
 
             float newHeight = Mathf.MoveTowards(_cc.height, _targetCCHeight,
                 _crouchTransitionSpeed * Time.deltaTime);
-
-            // Adjust center so feet stay on the ground as height changes
-            float delta  = newHeight - _cc.height;
-            _cc.height   = newHeight;
-            _cc.center   = new Vector3(0f, newHeight * 0.5f, 0f);
-
-            // Compensate position so the character doesn't sink into the floor
+            float delta   = newHeight - _cc.height;
+            _cc.height    = newHeight;
+            _cc.center    = new Vector3(0f, newHeight * 0.5f, 0f);
             transform.position += Vector3.up * (delta * 0.5f);
+        }
+
+        // ─── Interact (Space) ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Space pressed. DBD priority order:
+        ///   1. If a skill check is active → submit it immediately.
+        ///   2. Otherwise → raycast for an IInteractable and call Interact().
+        /// </summary>
+        private void OnInteractPressed()
+        {
+            // Priority 1: Skill check
+            var sc = SkillCheckManager.Instance;
+            if (sc != null && sc.State.IsActive)
+            {
+                sc.Submit();
+                return;
+            }
+
+            // Priority 2: Start/toggle interaction
+            TryInteract();
+        }
+
+        /// <summary>Space released — end any held interaction.</summary>
+        private void OnInteractReleased()
+        {
+            _isHoldingInteract = false;
+            _currentHeldInteractable = null;
+        }
+
+        private void TryInteract()
+        {
+            Transform origin = _interactionOrigin != null ? _interactionOrigin : transform;
+
+            if (Physics.Raycast(origin.position, origin.forward,
+                out RaycastHit hit, _interactionRange, _interactionLayers))
+            {
+                var interactable = hit.collider.GetComponentInParent<IInteractable>();
+                if (interactable != null)
+                {
+                    _isHoldingInteract       = true;
+                    _currentHeldInteractable = interactable;
+                    interactable.Interact(this);
+                }
+            }
         }
 
         // ─── Footsteps ────────────────────────────────────────────────────────
@@ -263,21 +301,12 @@ namespace Condemned.Gameplay
             if (!_isGrounded || !IsMoving) return;
 
             _distanceTravelled += _horizontalVelocity.magnitude * Time.deltaTime;
+            if (_distanceTravelled < _footstepStride) return;
 
-            if (_distanceTravelled >= _footstepStride)
-            {
-                _distanceTravelled = 0f;
-                EmitFootstepEvent();
-            }
-        }
-
-        private void EmitFootstepEvent()
-        {
-            float intensity = IsSprinting
-                ? _footstepIntensity * 1.6f   // Sprinting is louder
-                : _isCrouching
-                    ? _footstepIntensity * 0.4f // Crouch is quieter
-                    : _footstepIntensity;
+            _distanceTravelled = 0f;
+            float intensity = IsSprinting   ? _footstepIntensity * 1.6f
+                            : _isCrouching  ? _footstepIntensity * 0.4f
+                                            : _footstepIntensity;
 
             EventBus.Publish(new SoundEmittedEvent
             {
@@ -288,33 +317,26 @@ namespace Condemned.Gameplay
             });
         }
 
-        // ─── Interaction ──────────────────────────────────────────────────────
-
-        private void TryInteract()
-        {
-            Transform origin = _interactionOrigin != null ? _interactionOrigin : transform;
-
-            if (Physics.Raycast(origin.position, origin.forward,
-                out RaycastHit hit, _interactionRange, _interactionLayers))
-            {
-                var interactable = hit.collider.GetComponentInParent<IInteractable>();
-                interactable?.Interact(this);
-            }
-        }
-
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>Externally set the camera transform (called on spawn).</summary>
-        public void SetCamera(Transform cameraTransform) => _cameraTransform = cameraTransform;
+        public void SetCamera(Transform cam) => _cameraTransform = cam;
+        public void SetInjured(bool injured)  => _isInjured = injured;
 
-        /// <summary>Force the survivor into or out of the injured movement state.</summary>
-        public void SetInjured(bool injured) => _isInjured = injured;
-
-        /// <summary>Stop all movement input processing (e.g. while hooked or carried).</summary>
         public void SetInputEnabled(bool enabled)
         {
-            if (enabled) { _moveAction?.Enable(); _sprintAction?.Enable(); }
-            else         { _moveAction?.Disable(); _sprintAction?.Disable(); }
+            if (enabled)
+            {
+                _moveAction?.Enable();
+                _sprintAction?.Enable();
+                _interactAction?.Enable();
+            }
+            else
+            {
+                _moveAction?.Disable();
+                _sprintAction?.Disable();
+                _interactAction?.Disable();
+                _isHoldingInteract = false;
+            }
         }
 
         // ─── Event Handlers ───────────────────────────────────────────────────
@@ -336,27 +358,14 @@ namespace Condemned.Gameplay
 #if UNITY_EDITOR
         private void OnDrawGizmos()
         {
-            // Interaction range
             Transform origin = _interactionOrigin != null ? _interactionOrigin : transform;
             Gizmos.color = Color.yellow;
             Gizmos.DrawRay(origin.position, origin.forward * _interactionRange);
             Gizmos.DrawWireSphere(origin.position + origin.forward * _interactionRange, 0.08f);
 
-            // Footstep radius
             Gizmos.color = new Color(1f, 1f, 0f, 0.06f);
             Gizmos.DrawWireSphere(transform.position, _footstepRadius);
         }
 #endif
-    }
-
-    // ─── Interactable Interface ───────────────────────────────────────────────
-
-    /// <summary>
-    /// Implement this on any object a survivor can interact with
-    /// (generators, pallets, lockers, hooks, exit gates).
-    /// </summary>
-    public interface IInteractable
-    {
-        void Interact(SurvivorController survivor);
     }
 }

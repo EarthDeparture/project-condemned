@@ -109,6 +109,11 @@ namespace Condemned.Gameplay
         private void Awake()
         {
             _cc = GetComponent<CharacterController>();
+
+            // Auto-discover camera if not assigned
+            if (_cameraTransform == null && Camera.main != null)
+                _cameraTransform = Camera.main.transform;
+
             BindInputActions();
 
             EventBus.Subscribe<KillerStunnedEvent>(OnStunned);

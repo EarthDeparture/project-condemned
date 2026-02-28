@@ -63,9 +63,9 @@ namespace Condemned.Editor
                                  "Controllers will need manual assignment.");
 
             EnsureManagers();
-            EnsureCamera(inputActions);
-            EnsureSurvivor(inputActions);
+            EnsureSurvivor(inputActions);   // Survivor first — camera needs its transform
             EnsureKiller(inputActions);
+            EnsureCamera(inputActions);     // Camera last — wires target to existing Survivor
             EnsureGenerators();
             EnsureHooks();
             EnsureExitGates();
@@ -135,7 +135,27 @@ namespace Condemned.Editor
                 Log("Created Main Camera");
             }
 
-            EnsureComponent<IsometricCameraController>(cam.gameObject);
+            var camCtrl = EnsureComponent<IsometricCameraController>(cam.gameObject);
+
+            // Wire the camera target directly via SerializedObject so it persists
+            // in the saved scene — no runtime bootstrapping required for camera to work.
+            var survivorGO = GameObject.Find("Survivor_Player");
+            if (survivorGO != null)
+            {
+                var so         = new SerializedObject(camCtrl);
+                var targetProp = so.FindProperty("_target");
+                if (targetProp != null)
+                {
+                    targetProp.objectReferenceValue = survivorGO.transform;
+                    so.ApplyModifiedProperties();
+                    Log("Camera target → Survivor_Player");
+                }
+            }
+            else
+            {
+                Log("WARNING: Survivor_Player not found. Camera target unset — Bootstrapper will wire it at runtime.");
+            }
+
             Log("Camera OK");
         }
 

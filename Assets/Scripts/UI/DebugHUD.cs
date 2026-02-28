@@ -205,8 +205,9 @@ namespace Condemned.UI
 
             GUILayout.Space(4);
             GUILayout.Label($"── CONTROLS ───────────────", _headerStyle);
-            GUILayout.Label("WASD=Move  LShift=Sprint  C=Crouch", _labelStyle);
-            GUILayout.Label("E=Interact  LMB=Attack  RMB=Lunge", _labelStyle);
+            GUILayout.Label("WASD=Move  LShift=Sprint  LCtrl=Crouch", _labelStyle);
+            GUILayout.Label("Space=Interact/SkillCheck  F1=Hide HUD", _labelStyle);
+            GUILayout.Label("Killer: LMB=Attack  RMB=Lunge  Space=Interact", _labelStyle);
 
             GUILayout.EndArea();
         }
