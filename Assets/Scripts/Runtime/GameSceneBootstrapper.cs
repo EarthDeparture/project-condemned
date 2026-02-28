@@ -53,6 +53,14 @@ namespace Condemned.Runtime
 
         private IEnumerator Start()
         {
+            // Wait one frame — guarantees all Awake() calls on other objects have run.
+            yield return null;
+
+            // Re-run camera wiring as a safety net: if the Editor tool already set
+            // the _target via SerializedObject this is a harmless no-op. If something
+            // went wrong at setup time, this catches it.
+            WireCamera();
+
             yield return new WaitForSeconds(_startDelay);
             BeginMatch();
         }
