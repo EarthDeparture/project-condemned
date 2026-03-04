@@ -395,14 +395,4 @@ namespace Condemned.Gameplay
 #endif
     }
 
-    // ─── Killer Interactable Interface ────────────────────────────────────────
-
-    /// <summary>
-    /// Implement on objects the killer can interact with:
-    /// generators (kick), pallets (break), hatch (close), downed survivors (carry).
-    /// </summary>
-    public interface IKillerInteractable
-    {
-        void KillerInteract(KillerController killer);
-    }
 }
